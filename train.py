@@ -18,12 +18,12 @@ import torchvision.transforms as transforms
 import torch.nn as nn
 import torch
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = "7"
+os.environ['CUDA_VISIBLE_DEVICES'] = "0"
 
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--step', type=int, default=1,
-                    help='0: Tumor shape&level / 1: Tumor inpaint / 2: Whole step')
+                    help='0: Tumor shape & grade / 1: Tumor inpaint / 2: Whole step')
 parser.add_argument('--lr', type=float, default=1e-4,
                     help='learning rate for encoder')
 parser.add_argument('--batchSize', type=float, default=1,
@@ -33,33 +33,34 @@ parser.add_argument('--imsize', type=float, default=256,
 parser.add_argument('--start_epoch', type=float, default=0, help='start Epoch')
 parser.add_argument('--end_epoch', type=float, default=200, help='end Epoch')
 parser.add_argument('--data_root', type=str,
-                    default='../data/Brain_v5', help='root of the images')
+                    default='../data/', help='root of the images')
 parser.add_argument('--result', type=str,
-                    default='/home/sunho/PycharmProjects/ksh/venv/InpaintGAN/Result2/')
+                    default='./RESULT/')
 parser.add_argument('--resume', type=str,
-                    default='/home/sunho/PycharmProjects/ksh/venv/InpaintGAN/Result/20190821_1643/model/100/')
-parser.add_argument('--explain', type=str, default='l1+adv+cont')
+                    default='./MODEL/')
 opt = parser.parse_args()
-print(opt)
+
 if pathlib.Path('%s' % (opt.data_root)).exists() == False:
     print("******  Data root is incorrect...******")
-# result_dir = os.path.join(opt.result, strftime('%Y%m%d_%H%M'))
-result_dir = os.path.join(opt.result, 'Inpaint/Proposed_all')
-# result_dir = os.path.join(opt.result, 'Inpaint/Proposed_l1_cont')
-print(result_dir)
-pathlib.Path(result_dir).mkdir(parents=True, exist_ok=True)
+
+if pathlib.Path(opt.result).exists() == False:
+    pathlib.Path(opt.result).mkdir(parents=True, exist_ok=True)
 
 cudaAvailable = True
-
 Tensor = torch.cuda.FloatTensor
 
+'''
+step == 0: only train tumor_shape network and tumor_grade network
+step == 1: only train Inpaint_generator network and Inpaint_discriminator network
+step == 2: train whole network
+'''
 if opt.step == 0:
     tumor_shape = Tumor_shape().cuda()
     tumor_grade = Tumor_grade().cuda()
 elif opt.step == 1:
     inp_gen = Inpaint_generator().cuda()
     inp_dis = Inpaint_discriminator().cuda()
-else:
+elif opt.step == 2:
     tumor_shape = Tumor_shape().cuda()
     tumor_grade = Tumor_grade().cuda()
     inp_gen = Inpaint_generator().cuda()
@@ -69,7 +70,6 @@ vgg = Vgg16(requires_grad=False).cuda()
 vgg.eval()
 
 if opt.resume != '':
-    # model_dir = os.path.join(result_dir, 'model/%d' % (opt.start_epoch))
     model_dir = opt.resume
     if opt.step == 0:
         tumor_shape.load_state_dict(torch.load(model_dir+'/tumor_shape.pth'))
@@ -107,47 +107,40 @@ else:
 # transforms_ = [transforms.Resize(256, 256), transforms.ToTensor()]
 # an_dataloader = DataLoader(an_BrainDataset(root=opt.dataroot, mode='Train/Original_full/', transforms_=transforms_),batch_size=opt.batchSize, shuffle=True, num_workers=1)
 
-abnormal_data_dir = 'Original_part/5'
 abnormal_dataset = an_BrainDataset(
-    root=opt.data_root, mode='Train', data_dir=abnormal_data_dir, aug=None)
+    root=opt.data_root, mode='Train', data_dir='/Original_full/', aug=None)
 abnormal_loader = DataLoader(
     abnormal_dataset, batch_size=opt.batchSize, shuffle=True, num_workers=1)
-print(len(abnormal_loader))
+
 print("Strat training ...")
 for epoch in range(opt.start_epoch, opt.end_epoch):
     print('epoch -- > [%d/%d] \t %s ' % (epoch, opt.end_epoch, time.ctime()))
     loss_total = 0
     j = 0
     for i, (batch) in enumerate(abnormal_loader, 0):
-
-        # F, T1, T1c, T2, uni_B, M, Binary_M, Circle_M, level_Circle_M =  batch['F'].type(Tensor), batch['T1'].type(Tensor)\
-        #     , batch['T1c'].type(Tensor), batch['T2'].type(Tensor), batch['uni_Brain'].type(Tensor)\
-        #     , batch['M'].type(Tensor), batch['Binary_M'].type(Tensor), batch['Circle'].type(Tensor), batch['level_Circle'].type(Tensor)
-
         F, T1, T1c, T2, uni_B = batch['F'].type(Tensor), batch['T1'].type(
             Tensor), batch['T1c'].type(Tensor), batch['T2'].type(Tensor), batch['uni_B'].type(Tensor)
         M, M_WT, M_ET, M_NET = batch['M'].type(Tensor), batch['M_WT'].type(
             Tensor), batch['M_ET'].type(Tensor), batch['M_NET'].type(Tensor)
         if torch.sum(M) < 100:
-            # print(torch.sum(M), 'pass')
             continue
-        # Binary_M, M, level_Circle_M = batch['Binary_M'].type(Tensor), batch['M'].type(Tensor), batch['level_Circle'].type(Tensor)
-        #
-        #
-        #
-        # # Tumor shape network update
-        # if opt.step == 0 or opt.step == 2:
-        #     optm_tm_shape.zero_grad()
-        #     out_mask_shape = tumor_shape(torch.cat([uni_B, Circle_M], 1))
-        #     tumor_shape_loss = L1Loss(out_mask_shape, Binary_M)
-        #     tumor_shape_loss.backward()
-        #     optm_tm_shape.step()
-        #     # Tumor grade network update
-        #     optm_tm_grade.zero_grad()
-        #     out_mask_grade = tumor_grade(torch.cat([Binary_M, level_Circle_M], 1))
-        #     tumor_grade_loss = L1Loss(out_mask_grade, M)
-        #     tumor_grade_loss.backward()
-        #     optm_tm_grade.step()
+        level_Circle_M, uni_Circle_M = batch['level_Circle_M'].type(
+            Tensor), batch['uni_Circle_M'].type(Tensor)
+
+        # Tumor shape network update
+        if opt.step == 0 or opt.step == 2:
+            optm_tm_shape.zero_grad()
+            out_mask_shape = tumor_shape(torch.cat([uni_B, Circle_M], 1))
+            tumor_shape_loss = L1Loss(out_mask_shape, M_WT)
+            tumor_shape_loss.backward()
+            optm_tm_shape.step()
+            # Tumor grade network update
+            optm_tm_grade.zero_grad()
+            out_mask_grade = tumor_grade(
+                torch.cat([M_WT, level_Circle_M], 1))
+            tumor_grade_loss = L1Loss(out_mask_grade, M)
+            tumor_grade_loss.backward()
+            optm_tm_grade.step()
 
         # Input and Output for Inpaint Network
         if opt.step == 1 or opt.step == 2:
@@ -189,47 +182,11 @@ for epoch in range(opt.start_epoch, opt.end_epoch):
             optm_inp_gen.step()
 
             loss_total += inp_gen_loss.data
-            if i % 500 == 0:
-                # print(inp_gb_loss.data, inp_lc_loss.data, content_loss.data)
-                # , inp_adv_loss.data, inp_dis_loss.data)
-                print(epoch, i, loss_total/(i+1))
-                # result_img = out_brain[0].reshape((4,1,256,256))
-                # original_img = brain[0].reshape((4, 1, 256, 256))
-                # blank_img = brain_blank[0].reshape((4, 1, 256, 256))
-                # vutils.save_image(result_img, filename=result_dir + "/[%03d]a%04d.png" % (epoch, i), nrow=4)
-                # vutils.save_image(original_img, filename=result_dir + "/[%03d]b%04d.png" % (epoch, i), nrow=4)
-                # vutils.save_image(blank_img, filename=result_dir + "/[%03d]c%04d.png" % (epoch, i), nrow=4)
-        # if (i%3000) == 0:
-        #
-        #     if opt.step == 0:
-        #         monitor_loss(i=i, dataloader_len=int(an_dataloader.__len__()), step = opt.step, tumor_grade_loss=tumor_grade_loss.data)
-        #         result_img = torch.cat((Binary_M, level_Circle_M, out_mask_grade, M), 0)
-        #         vutils.save_image(result_img, filename=result_dir + "/[%03d]A_%04d.png" % (epoch, i), nrow=4)
-        #         # save_result(mode='Train', result_dir=result_dir, epoch=epoch, i=i, step=opt.step,\
-        #         #             uni_B=uni_B, Circle_M=Circle_M, out_mask_shape=out_mask_shape, Binary_M=Binary_M, level_Circle_M=level_Circle_M, out_mask_grade=out_mask_grade, M=M)
-        #
-        #     if opt.step == 1:
-        #         # monitor_loss(i=i, dataloader_len=int(an_dataloader.__len__()), step = opt.step, inp_gb_loss=inp_gb_loss.data, inp_lc_loss=inp_lc_loss.data, \
-        #         #              inp_grad_loss=inp_grad_loss.data, inp_adv_loss=inp_adv_loss.data,
-        #         #              content_loss=content_loss.data, inp_dis_loss=inp_dis_loss.data)
-        #         save_result(mode='Train', result_dir=result_dir, epoch=epoch, i=i, step=opt.step,brain = brain, out_brain = out_brain)
-        #
-        #     if opt.step == 2:
-        #         monitor_loss(i=i, dataloader_len=int(an_dataloader.__len__()), step=opt.step,
-        #                      tumor_shape_loss=tumor_shape_loss.data, \
-        #                      inp_gb_loss=inp_gb_loss.data, inp_lc_loss=inp_lc_loss.data, \
-        #                      inp_grad_loss=inp_grad_loss.data, inp_adv_loss=inp_adv_loss.data,
-        #                      content_loss=content_loss.data, inp_dis_loss=inp_dis_loss.data)
-        #
-        #         save_result(mode='Train', result_dir=result_dir, epoch=epoch, i=i, step=opt.step, \
-        #                     uni_B=uni_B, Circle_M=Circle_M, out_mask_shape=out_mask_shape, Binary_M=Binary_M,
-        #                     level_Circle_M=level_Circle_M, out_mask_grade=out_mask_grade, M=M, \
-        #                     brain = brain, out_brain = out_brain)
 
     if (epoch) % 10 == 0:
         print("Saving the model ...")
-        model_dir = os.path.join(result_dir, 'model/%d' % (epoch))
+        model_dir = os.path.join(opt.result, 'model/%d' % (epoch))
         pathlib.Path(model_dir).mkdir(parents=True, exist_ok=True)
-        # torch.save(tumor_shape.state_dict(), model_dir + '/tumor_shape.pth')
-        # torch.save(tumor_grade.state_dict(), model_dir + '/tumor_grade.pth')
+        torch.save(tumor_shape.state_dict(), model_dir + '/tumor_shape.pth')
+        torch.save(tumor_grade.state_dict(), model_dir + '/tumor_grade.pth')
         torch.save(inp_gen.state_dict(), model_dir + '/inp_gen.pth')
