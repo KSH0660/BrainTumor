@@ -3,7 +3,7 @@ Rather than modifying the data path or details of the code based on our code, we
 We processed the brain tumor dataset with matlab in our own way, and it is difficult to share everything at GitHub due to resource problems. 
 If you have any questions about the implementation or model layer, please email to me. 
 
-* Enjoy the below synthesis result! *
+Enjoy the below synthesis result! 
 
 * * *
 __Generation of Binary Tumor Mask__
