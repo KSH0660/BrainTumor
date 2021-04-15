@@ -1,3 +1,17 @@
+Feel free to use the storage above.
+
+>'https://drive.google.com/drive/folders/1-MtsqpOnuprBZ2TinTHwOugfA7r8uDQ1?usp=sharing'
+
+At this google drive directory, there are not only our model weight but also tempurature normal brain slices for a single subject.
+
+
+We stronly recomment to explore our jupyter notebook file (./inference_example.ipynb)! 
+Step-by-step procedures are well-expressed.
+
+If you want to use it for data augmentation, I recommend you to modify the jupyter notebook file. 
+
+Below are interesting slices for each step. 
+Have fun!
 
 * * *
 __Generation of Binary Tumor Mask__
